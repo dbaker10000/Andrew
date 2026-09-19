@@ -58,13 +58,22 @@ cd "$APP_DIR"
 "$APP_DIR/.venv/bin/flask" --app 'app:create_app' bootstrap-admin
 
 install -m 644 "$APP_DIR/deploy/andrew.service" /etc/systemd/system/andrew.service
-install -m 644 "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/andrew.go-baker.com
+cat > /etc/nginx/sites-available/andrew.go-baker.com <<EOF
+server {
+    listen 80;
+    server_name ${DOMAIN};
+    location / { proxy_pass http://127.0.0.1:8010; }
+}
+EOF
 ln -s /etc/nginx/sites-available/andrew.go-baker.com /etc/nginx/sites-enabled/andrew.go-baker.com
 nginx -t
 systemctl daemon-reload
 systemctl enable --now andrew
 systemctl reload nginx
-certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email --redirect -d "$DOMAIN"
+certbot certonly --nginx --non-interactive --agree-tos --register-unsafely-without-email -d "$DOMAIN"
+install -m 644 "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/andrew.go-baker.com
+nginx -t
+systemctl reload nginx
 
 echo
 echo "Andrew is live at https://${DOMAIN}"
