@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block title %}Sign in · Andrew{% endblock %}{% block content %}
+<section class="login-card"><div class="brand-mark large">A</div><p class="eyebrow">ANDREW TASKS</p><h1>Welcome back</h1><p class="muted">Sign in to manage your work.</p>
+<form method="post" class="form">{{ form.hidden_tag() }}<label>{{ form.username.label }}{{ form.username(autocomplete='username', autofocus=true) }}</label><label>{{ form.password.label }}{{ form.password(autocomplete='current-password') }}</label>{{ form.submit(class_='button full') }}</form></section>
+{% endblock %}

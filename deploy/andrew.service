@@ -1,0 +1,18 @@
+[Unit]
+Description=Andrew task tracker
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/andrew
+EnvironmentFile=/etc/andrew/andrew.env
+ExecStart=/var/www/andrew/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 --access-logfile - --error-logfile - wsgi:app
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
