@@ -9,7 +9,7 @@
 {% if current_user.is_authenticated %}
 <header class="topbar"><a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">A</span> Andrew</a>
   <nav><a href="{{ url_for('dashboard') }}">Tasks</a>{% if current_user.is_admin %}<a href="{{ url_for('users') }}">Administration</a>{% endif %}</nav>
-  <div class="account"><span>{{ current_user.username }}</span><form method="post" action="{{ url_for('logout') }}">{{ csrf_token() }}<button class="link-button">Sign out</button></form></div>
+  <div class="account"><span>{{ current_user.username }}</span><form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button">Sign out</button></form></div>
 </header>
 {% endif %}
 <main class="{% if not current_user.is_authenticated %}auth-shell{% else %}shell{% endif %}">
