@@ -162,4 +162,10 @@ def create_app():
  @a.post('/admin/users/<int:id>/reset')
  @login_required
  def reset_user(id):admin();u=db.session.get(User,id) or abort(404);u.temporary_password=temp();u.set_password(u.temporary_password);u.must_change=True;u.reset_requested=False;db.session.commit();return redirect(url_for('users'))
+ @a.cli.command('bootstrap-admin')
+ def bootstrap_admin():
+  username,password=os.getenv('ADMIN_USERNAME'),os.getenv('ADMIN_PASSWORD')
+  if not username or not password: raise RuntimeError('Set ADMIN_USERNAME and ADMIN_PASSWORD.')
+  if db.session.scalar(select(User).where(User.username==username)): print('Administrator already exists.'); return
+  u=User(username=username,is_admin=True,must_change=False);u.set_password(password);db.session.add(u);db.session.commit();print('Administrator created.')
  return a
