@@ -1,4 +1,1 @@
-{% extends 'base.html' %}{% block title %}Sign in · Andrew{% endblock %}{% block content %}
-<section class="login-card"><div class="brand-mark large">A</div><p class="eyebrow">ANDREW TASKS</p><h1>Welcome back</h1><p class="muted">Sign in to manage your work.</p>
-<form method="post" class="form">{{ form.hidden_tag() }}<label>{{ form.username.label }}{{ form.username(autocomplete='username', autofocus=true) }}</label><label>{{ form.password.label }}{{ form.password(autocomplete='current-password') }}</label>{{ form.submit(class_='button full') }}</form></section>
-{% endblock %}
+{% extends 'base.html' %}{% block content %}<section class="auth"><p>RECALL STUDY</p><h1>Learn what matters.</h1><form method="post">{{form.hidden_tag()}}<label>Username{{form.username}}</label><label>Password{{form.password(id='p')}}<button type="button" onclick="p.type=p.type=='password'?'text':'password'">Show / hide</button></label>{{form.submit(class_='primary')}}<a href="{{url_for('reset_request')}}">Request password reset</a></form></section>{% endblock %}

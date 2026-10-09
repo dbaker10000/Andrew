@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="auth"><p>SESSION COMPLETE</p><h1>{{score}}%</h1><p>Nice work. Revisit this deck to strengthen recall.</p><a class="primary" href="{{url_for('deck_view',id=study.deck_id)}}">Back to deck</a></section>{% endblock %}
