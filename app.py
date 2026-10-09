@@ -182,7 +182,8 @@ def create_app():
  def users():admin();return render_template('users.html',users=db.session.scalars(select(User).order_by(User.username)).all())
  @a.route('/admin/tests')
  @login_required
- def admin_tests():admin();return render_template('admin_tests.html',tests=db.session.scalars(select(TestSession).order_by(TestSession.submitted_at.desc())).all())
+ def admin_tests():
+  admin();tests=db.session.scalars(select(TestSession).where(TestSession.submitted_at.is_not(None)).order_by(TestSession.submitted_at.desc())).all();rows=[(t,db.session.get(Deck,t.deck_id),db.session.get(User,t.user_id)) for t in tests];return render_template('admin_tests.html',rows=rows)
  @a.route('/admin/tests/<int:id>/grade',methods=['GET','POST'])
  @login_required
  def grade_test(id):
