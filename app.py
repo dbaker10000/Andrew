@@ -37,6 +37,7 @@ class CardForm(FlaskForm):
 class PasswordForm(FlaskForm): password=PasswordField('New password',validators=[DataRequired()]); confirm=PasswordField('Confirm password',validators=[DataRequired(),EqualTo('password')]); submit=SubmitField('Update password')
 class VerifyForm(FlaskForm): username=StringField('Username',validators=[DataRequired()]); password=PasswordField('Current password',validators=[DataRequired()]); submit=SubmitField('Continue')
 class UserForm(FlaskForm): username=StringField('Username',validators=[DataRequired()]); temporary_password=StringField('Temporary password',validators=[DataRequired()]); is_admin=BooleanField('Administrator'); submit=SubmitField('Save user')
+class ShareForm(FlaskForm): recipient=SelectField('Send a copy to',choices=[]); confirm=BooleanField('Make a copy for the selected recipient(s)'); submit=SubmitField('Send deck copy')
 class ResetForm(FlaskForm): username=StringField('Username',validators=[DataRequired()]); submit=SubmitField('Request reset')
 def create_app():
  a=Flask(__name__); a.config.update(SECRET_KEY=os.getenv('SECRET_KEY','dev'),SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL','sqlite:///flashcards.db'),SQLALCHEMY_TRACK_MODIFICATIONS=False,SESSION_COOKIE_SECURE=os.getenv('FLASK_ENV')=='production'); db.init_app(a);migrate.init_app(a,db);csrf.init_app(a);login_manager.init_app(a)
@@ -104,9 +105,23 @@ def create_app():
  @a.route('/decks/<int:id>/edit',methods=['GET','POST'])
  @login_required
  def edit_deck(id):
-  x=deck(id);f=DeckForm(obj=x)
+  x=deck(id);f=DeckForm(obj=x);share=ShareForm()
+  if current_user.is_admin:share.recipient.choices=[('all','All users')]+[(str(u.id),u.username) for u in db.session.scalars(select(User).where(User.id!=current_user.id).order_by(User.username)).all()]
   if f.validate_on_submit():x.title=f.title.data;x.description=f.description.data;db.session.commit();return redirect(url_for('deck_view',id=id))
-  return render_template('deck_form.html',form=f,deck=x)
+  return render_template('deck_form.html',form=f,deck=x,share_form=share)
+ @a.post('/decks/<int:id>/share')
+ @login_required
+ def share_deck(id):
+  admin();source=deck(id);f=ShareForm();users=db.session.scalars(select(User).where(User.id!=current_user.id).order_by(User.username)).all();f.recipient.choices=[('all','All users')]+[(str(u.id),u.username) for u in users]
+  if not f.validate_on_submit() or not f.confirm.data:flash('Confirm that you want to create the deck copy.','danger');return redirect(url_for('edit_deck',id=id))
+  recipients=users if f.recipient.data=='all' else [db.session.get(User,int(f.recipient.data))]
+  for recipient in recipients:
+   if not recipient:continue
+   copy=Deck(title=source.title,description=source.description,owner_id=recipient.id);db.session.add(copy);db.session.flush()
+   for card in source.cards:
+    card_copy=Card(deck_id=copy.id,prompt=card.prompt,kind=card.kind,answer=card.answer,position=card.position);db.session.add(card_copy);db.session.flush()
+    for choice in card.choices:db.session.add(Choice(card_id=card_copy.id,text=choice.text,correct=choice.correct,position=choice.position))
+  db.session.commit();flash(f'Deck copied to {len(recipients)} user(s).','success');return redirect(url_for('edit_deck',id=id))
  @a.post('/decks/<int:id>/delete')
  @login_required
  def delete_deck(id):db.session.delete(deck(id));db.session.commit();return redirect(url_for('home'))
