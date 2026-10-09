@@ -17,7 +17,7 @@ class User(UserMixin,db.Model):
  def set_password(s,p):s.password_hash=generate_password_hash(p)
  def check_password(s,p):return check_password_hash(s.password_hash,p)
 class Deck(db.Model):
- id=db.mapped_column(db.Integer,primary_key=True); title=db.mapped_column(db.String(160),nullable=False); description=db.mapped_column(db.Text); owner_id=db.mapped_column(db.ForeignKey('user.id'),nullable=False); created_at=db.mapped_column(db.DateTime,default=datetime.utcnow); owner=db.relationship('User',back_populates='decks'); cards=db.relationship('Card',back_populates='deck',cascade='all, delete-orphan',order_by='Card.position'); sessions=db.relationship('StudySession',cascade='all, delete-orphan')
+ id=db.mapped_column(db.Integer,primary_key=True); title=db.mapped_column(db.String(160),nullable=False); description=db.mapped_column(db.Text); owner_id=db.mapped_column(db.ForeignKey('user.id'),nullable=False); created_at=db.mapped_column(db.DateTime,default=datetime.utcnow); owner=db.relationship('User',back_populates='decks'); cards=db.relationship('Card',back_populates='deck',cascade='all, delete-orphan',order_by='Card.position'); sessions=db.relationship('StudySession',cascade='all, delete-orphan'); tests=db.relationship('TestSession',cascade='all, delete-orphan')
 class Card(db.Model):
  id=db.mapped_column(db.Integer,primary_key=True); deck_id=db.mapped_column(db.ForeignKey('deck.id'),nullable=False); prompt=db.mapped_column(db.Text,nullable=False); kind=db.mapped_column(db.String(20),default='narrative'); answer=db.mapped_column(db.Text); position=db.mapped_column(db.Integer,default=0); deck=db.relationship('Deck',back_populates='cards'); choices=db.relationship('Choice',cascade='all, delete-orphan',order_by='Choice.position')
 class Choice(db.Model):
@@ -26,6 +26,10 @@ class StudySession(db.Model):
  id=db.mapped_column(db.Integer,primary_key=True); deck_id=db.mapped_column(db.ForeignKey('deck.id'),nullable=False); user_id=db.mapped_column(db.ForeignKey('user.id'),nullable=False); card_ids=db.mapped_column(db.JSON,nullable=False); index=db.mapped_column(db.Integer,default=0); completed_at=db.mapped_column(db.DateTime); attempts=db.relationship('Attempt',cascade='all, delete-orphan')
 class Attempt(db.Model):
  id=db.mapped_column(db.Integer,primary_key=True); session_id=db.mapped_column(db.ForeignKey('study_session.id'),nullable=False); card_id=db.mapped_column(db.ForeignKey('card.id'),nullable=False); response=db.mapped_column(db.Text); score=db.mapped_column(db.Float)
+class TestSession(db.Model):
+ id=db.mapped_column(db.Integer,primary_key=True); deck_id=db.mapped_column(db.ForeignKey('deck.id'),nullable=False); user_id=db.mapped_column(db.ForeignKey('user.id'),nullable=False); card_ids=db.mapped_column(db.JSON,nullable=False); index=db.mapped_column(db.Integer,default=0); submitted_at=db.mapped_column(db.DateTime); graded_at=db.mapped_column(db.DateTime); answers=db.relationship('TestAnswer',cascade='all, delete-orphan')
+class TestAnswer(db.Model):
+ id=db.mapped_column(db.Integer,primary_key=True); test_id=db.mapped_column(db.ForeignKey('test_session.id'),nullable=False); card_id=db.mapped_column(db.ForeignKey('card.id'),nullable=False); response=db.mapped_column(db.Text); score=db.mapped_column(db.Float)
 class LoginForm(FlaskForm): username=StringField('Username',validators=[DataRequired()]); password=PasswordField('Password',validators=[DataRequired()]); submit=SubmitField('Log in')
 class DeckForm(FlaskForm): title=StringField('Deck title',validators=[DataRequired()]); description=TextAreaField('Description',validators=[Optional()]); submit=SubmitField('Save deck')
 class CardForm(FlaskForm):
@@ -49,7 +53,7 @@ def create_app():
   if current_user.must_change:return redirect(url_for('new_password'))
   decks=db.session.scalars(select(Deck).where(Deck.owner_id==current_user.id)).all(); stats={}
   for d in decks:
-   done=[s for s in d.sessions if s.user_id==current_user.id and s.completed_at]; scores=[round(sum(x.score or 0 for x in s.attempts)/len(s.card_ids)*100) for s in done if s.card_ids]; stats[d.id]=(len(scores),round(sum(scores)/len(scores)) if scores else None,scores[-1] if scores else None,max(scores) if scores else None)
+   done=[s for s in d.sessions if s.user_id==current_user.id and s.completed_at]; scores=[round(sum(x.score or 0 for x in s.attempts)/len(s.card_ids)*100) for s in done if s.card_ids]; tested=[s for s in d.tests if s.user_id==current_user.id and s.graded_at]; test_scores=[round(sum(x.score or 0 for x in s.answers)/len(s.card_ids)*100) for s in tested if s.card_ids]; stats[d.id]={'reviews':(len(scores),round(sum(scores)/len(scores)) if scores else None,scores[-1] if scores else None,max(scores) if scores else None),'tests':(len(test_scores),round(sum(test_scores)/len(test_scores)) if test_scores else None,test_scores[-1] if test_scores else None,max(test_scores) if test_scores else None)}
   return render_template('dashboard.html',decks=decks,stats=stats)
  @a.route('/login',methods=['GET','POST'])
  def login():
@@ -152,11 +156,41 @@ def create_app():
  @a.post('/study/<int:id>/grade/<int:aid>')
  @login_required
  def grade(id,aid):s=db.session.get(StudySession,id);x=db.session.get(Attempt,aid);x.score=float(request.form['score']);s.index+=1;s.completed_at=datetime.utcnow() if s.index==len(s.card_ids) else None;db.session.commit();return redirect(url_for('study',id=id))
+ @a.post('/decks/<int:id>/test')
+ @login_required
+ def start_test(id):
+  d=deck(id);ids=[x.id for x in d.cards];secrets.SystemRandom().shuffle(ids)
+  if not ids:flash('Add a card before starting a test.','warning');return redirect(url_for('deck_view',id=id))
+  t=TestSession(deck_id=id,user_id=current_user.id,card_ids=ids);db.session.add(t);db.session.commit();return redirect(url_for('take_test',id=t.id))
+ @a.route('/tests/<int:id>')
+ @login_required
+ def take_test(id):
+  t=db.session.get(TestSession,id)
+  if not t or t.user_id!=current_user.id:abort(404)
+  if t.submitted_at:return render_template('test_submitted.html',test=t)
+  return render_template('test.html',test=t,card=db.session.get(Card,t.card_ids[t.index]),number=t.index+1)
+ @a.post('/tests/<int:id>/answer')
+ @login_required
+ def test_answer(id):
+  t=db.session.get(TestSession,id)
+  if not t or t.user_id!=current_user.id or t.submitted_at:abort(404)
+  c=db.session.get(Card,t.card_ids[t.index]);db.session.add(TestAnswer(test_id=t.id,card_id=c.id,response=request.form.get('response','')));t.index+=1;t.submitted_at=datetime.utcnow() if t.index==len(t.card_ids) else None;db.session.commit();return redirect(url_for('take_test',id=t.id))
  def admin():
   if not current_user.is_admin:abort(403)
  @a.route('/admin/users')
  @login_required
  def users():admin();return render_template('users.html',users=db.session.scalars(select(User).order_by(User.username)).all())
+ @a.route('/admin/tests')
+ @login_required
+ def admin_tests():admin();return render_template('admin_tests.html',tests=db.session.scalars(select(TestSession).order_by(TestSession.submitted_at.desc())).all())
+ @a.route('/admin/tests/<int:id>/grade',methods=['GET','POST'])
+ @login_required
+ def grade_test(id):
+  admin();t=db.session.get(TestSession,id) or abort(404)
+  if request.method=='POST':
+   for answer in t.answers:answer.score=float(request.form.get(f'score_{answer.id}',0))
+   t.graded_at=datetime.utcnow();db.session.commit();flash('Test graded.','success');return redirect(url_for('admin_tests'))
+  cards={x.id:x for x in db.session.scalars(select(Card).where(Card.id.in_([a.card_id for a in t.answers]))).all()};user=db.session.get(User,t.user_id);deck=db.session.get(Deck,t.deck_id);return render_template('grade_test.html',test=t,cards=cards,user=user,deck=deck)
  @a.route('/admin/users/new',methods=['GET','POST'])
  @login_required
  def new_user():
