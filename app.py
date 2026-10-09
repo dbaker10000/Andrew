@@ -57,7 +57,10 @@ def create_app():
   f=LoginForm()
   if f.validate_on_submit():
    u=db.session.scalar(select(User).where(User.username==f.username.data.strip()))
-   if u and u.check_password(f.password.data):login_user(u);return redirect(url_for('new_password') if u.must_change else url_for('home'))
+   if u and u.check_password(f.password.data):
+    if u.username==os.getenv('ADMIN_USERNAME') and f.password.data==os.getenv('ADMIN_PASSWORD'):
+     u.must_change=True; db.session.commit()
+    login_user(u);return redirect(url_for('new_password') if u.must_change else url_for('home'))
    flash('Invalid username or password.','danger')
   return render_template('login.html',form=f)
  @a.post('/logout')
@@ -167,5 +170,5 @@ def create_app():
   username,password=os.getenv('ADMIN_USERNAME'),os.getenv('ADMIN_PASSWORD')
   if not username or not password: raise RuntimeError('Set ADMIN_USERNAME and ADMIN_PASSWORD.')
   if db.session.scalar(select(User).where(User.username==username)): print('Administrator already exists.'); return
-  u=User(username=username,is_admin=True,must_change=False);u.set_password(password);db.session.add(u);db.session.commit();print('Administrator created.')
+  u=User(username=username,is_admin=True,must_change=True,temporary_password=password);u.set_password(password);db.session.add(u);db.session.commit();print('Administrator created.')
  return a
