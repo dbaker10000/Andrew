@@ -85,7 +85,8 @@ def create_app():
  def new_password():
   if not current_user.must_change and not session.get('verified'):return redirect(url_for('change_password'))
   f=PasswordForm()
-  if f.validate_on_submit():current_user.set_password(f.password.data);current_user.must_change=False;current_user.reset_requested=False;current_user.temporary_password=None;session.pop('verified',None);db.session.commit();flash('Password updated.','success');return redirect(url_for('home'))
+  if f.validate_on_submit():
+   user=db.session.get(User,current_user.id);user.set_password(f.password.data);user.must_change=False;user.reset_requested=False;user.temporary_password=None;session.pop('verified',None);db.session.commit();login_user(user,fresh=True);flash('Password updated. Your deck library is ready.','success');return redirect(url_for('home'),code=303)
   return render_template('new_password.html',form=f)
  @a.route('/decks/new',methods=['GET','POST'])
  @login_required
