@@ -167,7 +167,13 @@ def create_app():
  def answer(id):
   s=db.session.get(StudySession,id);c=db.session.get(Card,s.card_ids[s.index]) if s and s.user_id==current_user.id else abort(404);r=request.form.get('response','')
   if c.kind=='narrative':x=Attempt(session_id=s.id,card_id=c.id,response=r);db.session.add(x);db.session.commit();return render_template('grade.html',study=s,card=c,attempt=x)
-  ch=db.session.get(Choice,int(r)) if r.isdigit() else None;db.session.add(Attempt(session_id=s.id,card_id=c.id,response=r,score=1 if ch and ch.correct else 0));s.index+=1;s.completed_at=datetime.utcnow() if s.index==len(s.card_ids) else None;db.session.commit();return redirect(url_for('study',id=s.id))
+  ch=db.session.get(Choice,int(r)) if r.isdigit() else None;attempt=Attempt(session_id=s.id,card_id=c.id,response=r,score=1 if ch and ch.correct else 0);db.session.add(attempt);db.session.commit();correct=next((x for x in c.choices if x.correct),None);return render_template('mc_feedback.html',study=s,card=c,attempt=attempt,correct=correct)
+ @a.post('/study/<int:id>/continue')
+ @login_required
+ def continue_study(id):
+  s=db.session.get(StudySession,id)
+  if not s or s.user_id!=current_user.id or s.completed_at:abort(404)
+  s.index+=1;s.completed_at=datetime.utcnow() if s.index==len(s.card_ids) else None;db.session.commit();return redirect(url_for('study',id=id))
  @a.post('/study/<int:id>/grade/<int:aid>')
  @login_required
  def grade(id,aid):s=db.session.get(StudySession,id);x=db.session.get(Attempt,aid);x.score=float(request.form['score']);s.index+=1;s.completed_at=datetime.utcnow() if s.index==len(s.card_ids) else None;db.session.commit();return redirect(url_for('study',id=id))
