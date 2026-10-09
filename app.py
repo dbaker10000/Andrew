@@ -191,6 +191,12 @@ def create_app():
    for answer in t.answers:answer.score=float(request.form.get(f'score_{answer.id}',0))
    t.graded_at=datetime.utcnow();db.session.commit();flash('Test graded.','success');return redirect(url_for('admin_tests'))
   cards={x.id:x for x in db.session.scalars(select(Card).where(Card.id.in_([a.card_id for a in t.answers]))).all()};user=db.session.get(User,t.user_id);deck=db.session.get(Deck,t.deck_id);return render_template('grade_test.html',test=t,cards=cards,user=user,deck=deck)
+ @a.post('/admin/tests/<int:id>/delete')
+ @login_required
+ def delete_test(id):
+  admin();t=db.session.get(TestSession,id) or abort(404)
+  if not t.graded_at:abort(400)
+  db.session.delete(t);db.session.commit();flash('Graded test deleted.','success');return redirect(url_for('admin_tests'))
  @a.route('/admin/users/new',methods=['GET','POST'])
  @login_required
  def new_user():
