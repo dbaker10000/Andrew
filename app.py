@@ -112,7 +112,7 @@ def create_app():
  @a.post('/decks/<int:id>/grading')
  @login_required
  def toggle_grading(id):
-  d=deck(id);d.grading_enabled=request.form.get('grading_enabled')=='on';db.session.commit();flash(f"Grading is now {'on' if d.grading_enabled else 'off'} for {d.title}.",'success');return redirect(url_for('home'))
+  d=deck(id);d.grading_enabled='on' in request.form.getlist('grading_enabled');db.session.commit();flash(f"Grading is now {'on' if d.grading_enabled else 'off'} for {d.title}.",'success');return redirect(url_for('home'))
  @a.post('/decks/<int:id>/share')
  @login_required
  def share_deck(id):
