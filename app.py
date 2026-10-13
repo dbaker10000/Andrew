@@ -52,7 +52,7 @@ def create_app():
  @login_required
  def home():
   if current_user.must_change:return redirect(url_for('new_password'))
-  decks=db.session.scalars(select(Deck).where(Deck.owner_id==current_user.id)).all(); stats={}
+  decks=db.session.scalars(select(Deck).where(Deck.owner_id==current_user.id).order_by(Deck.id)).all(); stats={}
   for d in decks:
    all_reviews=[s for s in d.sessions if s.user_id==current_user.id and s.completed_at]; graded_reviews=[s for s in all_reviews if all(x.score is not None for x in s.attempts)]; scores=[round(sum(x.score for x in s.attempts)/len(s.card_ids)*100) for s in graded_reviews if s.card_ids]; tested=[s for s in d.tests if s.user_id==current_user.id and s.graded_at]; test_scores=[round(sum(x.score or 0 for x in s.answers)/len(s.card_ids)*100) for s in tested if s.card_ids]; stats[d.id]={'reviews':(len(all_reviews),round(sum(scores)/len(scores)) if scores else None,scores[-1] if scores else None,max(scores) if scores else None),'tests':(len(test_scores),round(sum(test_scores)/len(test_scores)) if test_scores else None,test_scores[-1] if test_scores else None,max(test_scores) if test_scores else None)}
   return render_template('dashboard.html',decks=decks,stats=stats)
