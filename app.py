@@ -17,7 +17,7 @@ class User(UserMixin,db.Model):
  def set_password(s,p):s.password_hash=generate_password_hash(p)
  def check_password(s,p):return check_password_hash(s.password_hash,p)
 class Deck(db.Model):
- id=db.mapped_column(db.Integer,primary_key=True); title=db.mapped_column(db.String(160),nullable=False); description=db.mapped_column(db.Text); owner_id=db.mapped_column(db.ForeignKey('user.id'),nullable=False); created_at=db.mapped_column(db.DateTime,default=datetime.utcnow); owner=db.relationship('User',back_populates='decks'); cards=db.relationship('Card',back_populates='deck',cascade='all, delete-orphan',order_by='Card.position'); sessions=db.relationship('StudySession',cascade='all, delete-orphan'); tests=db.relationship('TestSession',cascade='all, delete-orphan')
+ id=db.mapped_column(db.Integer,primary_key=True); title=db.mapped_column(db.String(160),nullable=False); description=db.mapped_column(db.Text); grading_enabled=db.mapped_column(db.Boolean,default=True,nullable=False); owner_id=db.mapped_column(db.ForeignKey('user.id'),nullable=False); created_at=db.mapped_column(db.DateTime,default=datetime.utcnow); owner=db.relationship('User',back_populates='decks'); cards=db.relationship('Card',back_populates='deck',cascade='all, delete-orphan',order_by='Card.position'); sessions=db.relationship('StudySession',cascade='all, delete-orphan'); tests=db.relationship('TestSession',cascade='all, delete-orphan')
 class Card(db.Model):
  id=db.mapped_column(db.Integer,primary_key=True); deck_id=db.mapped_column(db.ForeignKey('deck.id'),nullable=False); prompt=db.mapped_column(db.Text,nullable=False); kind=db.mapped_column(db.String(20),default='narrative'); answer=db.mapped_column(db.Text); position=db.mapped_column(db.Integer,default=0); deck=db.relationship('Deck',back_populates='cards'); choices=db.relationship('Choice',cascade='all, delete-orphan',order_by='Choice.position')
 class Choice(db.Model):
@@ -54,7 +54,7 @@ def create_app():
   if current_user.must_change:return redirect(url_for('new_password'))
   decks=db.session.scalars(select(Deck).where(Deck.owner_id==current_user.id)).all(); stats={}
   for d in decks:
-   done=[s for s in d.sessions if s.user_id==current_user.id and s.completed_at]; scores=[round(sum(x.score or 0 for x in s.attempts)/len(s.card_ids)*100) for s in done if s.card_ids]; tested=[s for s in d.tests if s.user_id==current_user.id and s.graded_at]; test_scores=[round(sum(x.score or 0 for x in s.answers)/len(s.card_ids)*100) for s in tested if s.card_ids]; stats[d.id]={'reviews':(len(scores),round(sum(scores)/len(scores)) if scores else None,scores[-1] if scores else None,max(scores) if scores else None),'tests':(len(test_scores),round(sum(test_scores)/len(test_scores)) if test_scores else None,test_scores[-1] if test_scores else None,max(test_scores) if test_scores else None)}
+   all_reviews=[s for s in d.sessions if s.user_id==current_user.id and s.completed_at]; graded_reviews=[s for s in all_reviews if all(x.score is not None for x in s.attempts)]; scores=[round(sum(x.score for x in s.attempts)/len(s.card_ids)*100) for s in graded_reviews if s.card_ids]; tested=[s for s in d.tests if s.user_id==current_user.id and s.graded_at]; test_scores=[round(sum(x.score or 0 for x in s.answers)/len(s.card_ids)*100) for s in tested if s.card_ids]; stats[d.id]={'reviews':(len(all_reviews),round(sum(scores)/len(scores)) if scores else None,scores[-1] if scores else None,max(scores) if scores else None),'tests':(len(test_scores),round(sum(test_scores)/len(test_scores)) if test_scores else None,test_scores[-1] if test_scores else None,max(test_scores) if test_scores else None)}
   return render_template('dashboard.html',decks=decks,stats=stats)
  @a.route('/login',methods=['GET','POST'])
  def login():
@@ -109,6 +109,10 @@ def create_app():
   if current_user.is_admin:share.recipient.choices=[('all','All users')]+[(str(u.id),u.username) for u in db.session.scalars(select(User).where(User.id!=current_user.id).order_by(User.username)).all()]
   if f.validate_on_submit():x.title=f.title.data;x.description=f.description.data;db.session.commit();return redirect(url_for('deck_view',id=id))
   return render_template('deck_form.html',form=f,deck=x,share_form=share)
+ @a.post('/decks/<int:id>/grading')
+ @login_required
+ def toggle_grading(id):
+  d=deck(id);d.grading_enabled=request.form.get('grading_enabled')=='on';db.session.commit();flash(f"Grading is now {'on' if d.grading_enabled else 'off'} for {d.title}.",'success');return redirect(url_for('home'))
  @a.post('/decks/<int:id>/share')
  @login_required
  def share_deck(id):
@@ -166,8 +170,9 @@ def create_app():
  @login_required
  def answer(id):
   s=db.session.get(StudySession,id);c=db.session.get(Card,s.card_ids[s.index]) if s and s.user_id==current_user.id else abort(404);r=request.form.get('response','')
-  if c.kind=='narrative':x=Attempt(session_id=s.id,card_id=c.id,response=r);db.session.add(x);db.session.commit();return render_template('grade.html',study=s,card=c,attempt=x)
-  ch=db.session.get(Choice,int(r)) if r.isdigit() else None;attempt=Attempt(session_id=s.id,card_id=c.id,response=r,score=1 if ch and ch.correct else 0);db.session.add(attempt);db.session.commit();correct=next((x for x in c.choices if x.correct),None);return render_template('mc_feedback.html',study=s,card=c,attempt=attempt,correct=correct)
+  grading=db.session.get(Deck,s.deck_id).grading_enabled
+  if c.kind=='narrative':x=Attempt(session_id=s.id,card_id=c.id,response=r);db.session.add(x);db.session.commit();return render_template('grade.html',study=s,card=c,attempt=x,grading=grading)
+  ch=db.session.get(Choice,int(r)) if r.isdigit() else None;attempt=Attempt(session_id=s.id,card_id=c.id,response=r,score=(1 if ch and ch.correct else 0) if grading else None);db.session.add(attempt);db.session.commit();correct=next((x for x in c.choices if x.correct),None);return render_template('mc_feedback.html',study=s,card=c,attempt=attempt,correct=correct,grading=grading)
  @a.post('/study/<int:id>/continue')
  @login_required
  def continue_study(id):
